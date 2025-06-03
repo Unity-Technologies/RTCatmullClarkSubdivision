@@ -1,0 +1,52 @@
+#pragma kernel VertexToHalfedgeMapping
+#define CCM_VERTEXTOHALFEDGE_WRITE
+#include "../CatmullClark_Gather.cginc"
+
+int _DispatchDistributer;
+RWStructuredBuffer<int> _CrashFlagRW;
+
+
+[numthreads(256, 1, 1)]
+void VertexToHalfedgeMapping(uint3 id : SV_DispatchThreadID)
+{
+	uint threadID = id.x + id.y * _DispatchDistributer * 256 + id.z * _DispatchDistributer * _DispatchDistributer * 256;
+	if (threadID >= ccm_HalfedgeCount)
+		return;
+
+	int halfedgeID = threadID;
+	int vertexID = ccm_HalfedgeVertexID(0, halfedgeID);
+	int maxHalfedgeID = halfedgeID;
+	int boundaryHalfedgeID = halfedgeID;
+
+	int crashCounter = 0;
+	int iterator;
+	for (iterator = ccm_NextVertexHalfedgeID(0, halfedgeID);
+		iterator >= 0 && iterator != halfedgeID && crashCounter < 100;
+		iterator = ccm_NextVertexHalfedgeID(0, iterator))
+	{
+		maxHalfedgeID = maxHalfedgeID > iterator ? maxHalfedgeID : iterator;
+		boundaryHalfedgeID = iterator;
+		crashCounter++;
+	}
+	if (crashCounter >= 100)
+	{
+		InterlockedAdd(_CrashFlagRW[0], 1);
+		return;
+	}
+
+	// affect max half-edge ID to vertex
+	if (iterator < 0) // boundary involved
+	{
+		if (halfedgeID == boundaryHalfedgeID)
+		{
+			ccm_VertexToHalfedgeBuffer[vertexID] = boundaryHalfedgeID;
+		}
+	}
+	else
+	{
+		if (halfedgeID == maxHalfedgeID)
+		{
+			ccm_VertexToHalfedgeBuffer[vertexID] = maxHalfedgeID;
+		}
+	}
+}

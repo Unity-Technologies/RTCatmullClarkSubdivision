@@ -1,0 +1,257 @@
+#pragma kernel InitHashIDBuffer
+#pragma kernel BitonicSortHashID
+#pragma kernel BitonicSortHashIDSM
+#pragma kernel BinarySearchTwinID
+#define CCM_HALFEDGE_WRITE
+#include "../CatmullClark_Gather.cginc"
+
+// =========== 64bits Unsigned Integer ===========
+struct uint64
+{
+	uint low;
+	uint high;
+};
+
+inline uint64 UnpackU64(uint high, uint low)
+{
+	uint64 c;
+	c.low = low;
+	c.high = high;
+	return c;
+}
+
+inline uint64 U32to64(uint low)
+{
+	uint64 c;
+	c.low = low;
+	c.high = 0;
+	return c;
+}
+
+inline bool InferiorU64(uint64 a, uint64 b)
+{
+	return a.high < b.high || (a.high == b.high && a.low < b.low);
+}
+
+inline bool SuperiorU64(uint64 a, uint64 b)
+{
+	return a.high > b.high || (a.high == b.high && a.low > b.low);
+}
+
+inline bool EqualU64(uint64 a, uint64 b)
+{
+	return a.high == b.high && a.low == b.low;
+}
+
+inline uint64 AddU64(uint64 a, uint64 b)
+{
+	uint64 c;
+	c.low = a.low + b.low;
+	c.high = a.high + b.high + (c.low < a.low); // Add with carry.
+	return c;
+}
+
+inline uint MulU64High(uint x, uint y)
+{
+	// Calculate 32-bit parts of the 64-bit result
+	uint x1 = x >> 16;
+	uint x0 = x << 16 >> 16;
+	uint y1 = y >> 16;
+	uint y0 = y << 16 >> 16;
+	uint part0 = x0 * y0;
+	uint part1 = x1 * y0;
+	uint part2 = x0 * y1;
+	uint part3 = x1 * y1;
+	/// Use part3
+	uint result = part3;
+	// Use the 16-bit high halves of part1 and part2
+	result += part1 >> 16;
+	result += part2 >> 16;
+	// Throw away their high half; multiply by 2^16
+	part1 <<= 16;
+	part2 <<= 16;
+	// Calculate the 33-bit sum of parts 1 and 2
+	bool carry = part1 + part2 < part1;
+	result += carry;
+	uint temp = part1 + part2;
+	// Use part0
+	carry = temp + part0 < temp;
+	result += carry;
+	return result;
+}
+
+inline uint64 MulU64(uint64 a, uint64 b)
+{
+	uint64 c;
+	c.low = a.low * b.low;
+	c.high = MulU64High(a.high, b.high);
+	return c;
+}
+// =========== 64bits Unsigned Integer ===========
+
+int _DispatchDistributer;
+
+StructuredBuffer<uint4> _HashIDBuffer;
+RWStructuredBuffer<uint4> _HashIDBufferRW;
+groupshared uint4 _SharedMemory[64 * 2];
+uint _ArraySize;
+uint _LoopValue1;
+uint _LoopValue2;
+
+
+[numthreads(256, 1, 1)]
+void InitHashIDBuffer(uint3 id : SV_DispatchThreadID)
+{
+	uint threadID = id.x + id.y * _DispatchDistributer * 256 + id.z * _DispatchDistributer * _DispatchDistributer * 256;
+	if (threadID >= _ArraySize)
+		return;
+
+	// Padding values
+	if (threadID >= ccm_HalfedgeCount)
+	{
+		_HashIDBufferRW[threadID] = uint4(0, 0xFFFFFFFFu, 0xFFFFFFFFu, 0);
+		return;
+	}
+
+	// Compute and store hash ID in 64 bit uint
+	int halfedgeID = threadID;
+	int nextID = ccm_HalfedgeNextID(0, halfedgeID);
+
+	uint64 vertexCount = U32to64(ccm_VertexCount);
+	uint64 v0 = U32to64(ccm_HalfedgeVertexID(0, halfedgeID));
+	uint64 v1 = U32to64(ccm_HalfedgeVertexID(0, nextID));
+
+	uint64 hashID = AddU64(v0, MulU64(vertexCount, v1));
+	_HashIDBufferRW[halfedgeID] = uint4(halfedgeID, hashID.high, hashID.low, 0);
+}
+
+
+[numthreads(64, 1, 1)]
+void BitonicSortHashID(uint3 dispatchThreadId : SV_DispatchThreadID)
+{
+	uint threadID = dispatchThreadId.x + dispatchThreadId.y * _DispatchDistributer * 64 + dispatchThreadId.z * _DispatchDistributer * _DispatchDistributer * 64;
+	if (threadID >= _ArraySize / 2)
+		return;
+
+	const uint d1 = _LoopValue1;
+	const uint d2 = _LoopValue2;
+	const uint mask = 0xFFFFFFFEu * d1;
+	const uint i1 = ((threadID << 1) & mask) | (threadID & ~(mask >> 1));
+	const uint i2 = i1 | d1;
+
+	const uint4 t1 = _HashIDBufferRW[i1];
+	const uint4 t2 = _HashIDBufferRW[i2];
+	const uint64 t1Hash = UnpackU64(t1.y, t1.z);
+	const uint64 t2Hash = UnpackU64(t2.y, t2.z);
+	const bool comparison = InferiorU64(t1Hash, t2Hash);
+	const uint4 minValue = comparison ? t1 : t2;
+	const uint4 maxValue = comparison ? t2 : t1;
+
+	if ((threadID & d2) == 0u)
+	{
+		_HashIDBufferRW[i1] = minValue;
+		_HashIDBufferRW[i2] = maxValue;
+	}
+	else
+	{
+		_HashIDBufferRW[i1] = maxValue;
+		_HashIDBufferRW[i2] = minValue;
+	}
+}
+
+
+[numthreads(64, 1, 1)]
+void BitonicSortHashIDSM(uint3 groupThreadId : SV_GroupThreadID, uint3 dispatchThreadId : SV_DispatchThreadID)
+{
+	uint globalThreadID = dispatchThreadId.x + dispatchThreadId.y * _DispatchDistributer * 64 + dispatchThreadId.z * _DispatchDistributer * _DispatchDistributer * 64;
+	bool ignoreThread = globalThreadID >= _ArraySize / 2;
+
+	uint localThreadID = groupThreadId.x;
+
+	_SharedMemory[2 * localThreadID + 0] = _HashIDBufferRW[2 * globalThreadID + 0];
+	_SharedMemory[2 * localThreadID + 1] = _HashIDBufferRW[2 * globalThreadID + 1];
+	GroupMemoryBarrierWithGroupSync();
+
+	uint d2 = _LoopValue2;
+	for (uint d1 = _LoopValue1; d1 >= 1u; d1 /= 2u)
+	{
+		uint mask = 0xFFFFFFFEu * d1;
+		uint i1 = ((localThreadID << 1) & mask) | (localThreadID & ~(mask >> 1));
+		uint i2 = i1 | d1;
+		uint4 t1 = _SharedMemory[i1];
+		uint4 t2 = _SharedMemory[i2];
+		uint64 t1Hash = UnpackU64(t1.y, t1.z);
+		uint64 t2Hash = UnpackU64(t2.y, t2.z);
+		bool comparison = InferiorU64(t1Hash, t2Hash);
+		uint4 minValue = comparison ? t1 : t2;
+		uint4 maxValue = comparison ? t2 : t1;
+
+		if (ignoreThread == false)
+		{
+			if ((globalThreadID & d2) == 0u)
+			{
+				_SharedMemory[i1] = minValue;
+				_SharedMemory[i2] = maxValue;
+			}
+			else
+			{
+				_SharedMemory[i1] = maxValue;
+				_SharedMemory[i2] = minValue;
+			}
+		}
+		GroupMemoryBarrierWithGroupSync();
+	}
+
+	if (ignoreThread == false)
+	{
+		_HashIDBufferRW[2 * globalThreadID + 0] = _SharedMemory[2 * localThreadID + 0];
+		_HashIDBufferRW[2 * globalThreadID + 1] = _SharedMemory[2 * localThreadID + 1];
+	}
+}
+
+
+[numthreads(256, 1, 1)]
+void BinarySearchTwinID(uint3 id : SV_DispatchThreadID)
+{
+	uint threadID = id.x + id.y * _DispatchDistributer * 256 + id.z * _DispatchDistributer * _DispatchDistributer * 256;
+	if (threadID >= _ArraySize)
+		return;
+
+	int halfedgeID = threadID;
+	int nextID = ccm_HalfedgeNextID(0, halfedgeID);
+
+	// Compute potential twin ID
+	uint64 vertexCount = U32to64(ccm_VertexCount);
+	uint64 v0 = U32to64(ccm_HalfedgeVertexID(0, halfedgeID));
+	uint64 v1 = U32to64(ccm_HalfedgeVertexID(0, nextID));
+	uint64 twinHashID = AddU64(v1, MulU64(vertexCount, v0));
+
+	// Binary search potential twin ID
+	int twinID = -1;
+	int beginID = 0;
+	int endID = ccm_HalfedgeCount - 1;
+	while (beginID <= endID)
+	{
+		int midID = (beginID + endID) / 2;
+		uint4 midRead = _HashIDBuffer[midID];
+		int midHalfedgeID = midRead.x;
+		uint64 midHashID = UnpackU64(midRead.y, midRead.z);
+
+		if (EqualU64(twinHashID, midHashID))
+		{
+			twinID = midHalfedgeID;
+			break;
+		}
+		else if (SuperiorU64(twinHashID, midHashID))
+		{
+			beginID = midID + 1;
+		}
+		else
+		{
+			endID = midID - 1;
+		}
+	}
+
+	// Write result
+	ccm_HalfedgeBuffer[halfedgeID].twinID = twinID;
+}

@@ -1,0 +1,32 @@
+#pragma kernel CSMain
+#define CCM_VERTEX_WRITE
+#include "../CatmullClark_Gather.cginc"
+
+StructuredBuffer<int> _UnityVertexBufferToCCMWeldedBuffer;
+ByteAddressBuffer _UnitySkinnedVertices;
+int _VertexBufferStride;
+int _VertexPositionOffset;
+int _VertexPositionDimension;
+
+[numthreads(256, 1, 1)]
+void CSMain (uint3 id : SV_DispatchThreadID)
+{
+	uint ccmWeldedVertexID = id.x;
+	uint unityVertexID = _UnityVertexBufferToCCMWeldedBuffer[ccmWeldedVertexID];
+
+	float3 position = float3(0, 0, 0);
+	if (_VertexPositionDimension == 3)
+	{
+		uint3 temp = _UnitySkinnedVertices.Load3((unityVertexID * _VertexBufferStride + _VertexPositionOffset));
+		position = float3(asfloat(temp.x), asfloat(temp.y), asfloat(temp.z));
+	}
+	else if (_VertexPositionDimension == 4)
+	{
+		uint4 temp = _UnitySkinnedVertices.Load4((unityVertexID * _VertexBufferStride + _VertexPositionOffset));
+		position = float3(asfloat(temp.x), asfloat(temp.y), asfloat(temp.z));
+	}
+
+	ccm_VertexPointBuffer[ccmWeldedVertexID * 3 + 0] = position.x;
+	ccm_VertexPointBuffer[ccmWeldedVertexID * 3 + 1] = position.y;
+	ccm_VertexPointBuffer[ccmWeldedVertexID * 3 + 2] = position.z;
+}

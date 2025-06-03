@@ -1,0 +1,31 @@
+#pragma kernel CSMain
+#define CCS_VERTEX_WRITE
+#include "../CatmullClark_Gather.cginc"
+
+uniform int u_Depth;
+int _DispatchDistributer;
+
+[numthreads(256, 1, 1)]
+void CSMain(uint3 id : SV_DispatchThreadID)
+{
+	const int cageID = 0;
+	const uint threadID = id.x + id.y * _DispatchDistributer * 256 + id.z * _DispatchDistributer * _DispatchDistributer * 256;
+	const int depth = u_Depth;
+	const int faceCount = ccm_FaceCountAtDepth_Fast(cageID, depth);
+	const int faceID = int(threadID);
+
+	if (faceID < faceCount)
+	{
+		const int vertexCount = ccm_VertexCountAtDepth_Fast(cageID, depth);
+		const int vertexID = vertexCount + faceID;
+		float3 newFacePoint = 0.0.xxx;
+
+		newFacePoint += ccs_HalfedgeVertexPoint(cageID, 4 * faceID + 0, depth);
+		newFacePoint += ccs_HalfedgeVertexPoint(cageID, 4 * faceID + 1, depth);
+		newFacePoint += ccs_HalfedgeVertexPoint(cageID, 4 * faceID + 2, depth);
+		newFacePoint += ccs_HalfedgeVertexPoint(cageID, 4 * faceID + 3, depth);
+		newFacePoint *= 0.25f;
+
+		WriteVertex(cageID, vertexID, newFacePoint);
+	}
+}

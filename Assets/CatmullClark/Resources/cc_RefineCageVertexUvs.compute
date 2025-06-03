@@ -1,0 +1,50 @@
+#pragma kernel CSMain
+#define CCS_HALFEDGE_WRITE
+#include "../CatmullClark_Gather.cginc"
+
+
+void WriteHalfedgeUv(const int cageID, int halfedgeID, float2 uv)
+{
+	ccs_HalfedgeBuffer[halfedgeID].uvID = cc__EncodeUv(uv);
+}
+
+int _DispatchDistributer;
+
+[numthreads(256, 1, 1)]
+void CSMain(uint3 id : SV_DispatchThreadID)
+{
+	const int cageID = 0;
+	const uint threadID = id.x + id.y * _DispatchDistributer * 256 + id.z * _DispatchDistributer * _DispatchDistributer * 256;
+	const int halfedgeCount = ccm_HalfedgeCount;
+	const int halfedgeID = int(threadID);
+
+	if (halfedgeID < halfedgeCount)
+	{
+		const int prevID = ccm_HalfedgePrevID(cageID, halfedgeID);
+		const int nextID = ccm_HalfedgeNextID(cageID, halfedgeID);
+		const float2 uv = ccm_HalfedgeVertexUv(cageID, halfedgeID);
+		const float2 nextUv = ccm_HalfedgeVertexUv(cageID, nextID);
+		const float2 prevUv = ccm_HalfedgeVertexUv(cageID, prevID);
+		const float2 edgeUv = (uv + nextUv) * 0.5f;
+		const float2 prevEdgeUv = (uv + prevUv) * 0.5f;
+		float2 faceUv = uv;
+		float m = 1.0f;
+
+		for (int halfedgeIt = ccm_HalfedgeNextID(cageID, halfedgeID);
+				 halfedgeIt != halfedgeID;
+				 halfedgeIt = ccm_HalfedgeNextID(cageID, halfedgeIt))
+		{
+			const float2 uv = ccm_HalfedgeVertexUv(cageID, halfedgeIt);
+
+			faceUv += uv;
+			++m;
+		}
+
+		faceUv /= m;
+
+		WriteHalfedgeUv(cageID, 4 * halfedgeID + 0, uv);
+		WriteHalfedgeUv(cageID, 4 * halfedgeID + 1, edgeUv);
+		WriteHalfedgeUv(cageID, 4 * halfedgeID + 2, faceUv);
+		WriteHalfedgeUv(cageID, 4 * halfedgeID + 3, prevEdgeUv);
+	}
+}

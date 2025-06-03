@@ -1,0 +1,19 @@
+#pragma kernel CSMain
+#define CCM_BF_FLAG_WRITE
+#include "ccm_BitField.cginc"
+
+int u_WriteBitStart;
+int u_WriteBitCount;
+int _DispatchDistributer;
+
+[numthreads(256, 1, 1)]
+void CSMain(uint3 id : SV_DispatchThreadID)
+{
+	uint threadID = id.x + id.y * _DispatchDistributer * 256 + id.z * _DispatchDistributer * _DispatchDistributer * 256;
+
+	if (threadID >= u_WriteBitCount)
+		return;
+
+	uint writeID = u_WriteBitStart + threadID;
+	u_Bitfield[writeID] = u_Bitfield[writeID * 2] + u_Bitfield[writeID * 2 + 1];
+}

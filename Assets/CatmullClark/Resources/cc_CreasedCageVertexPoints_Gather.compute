@@ -1,0 +1,101 @@
+#pragma kernel CSMain
+#define CCS_VERTEX_WRITE
+#include "../CatmullClark_Gather.cginc"
+
+
+int _DispatchDistributer;
+
+[numthreads(256, 1, 1)]
+void CSMain(uint3 id : SV_DispatchThreadID)
+{
+	const int cageID = 0;
+	const uint threadID = id.x + id.y * _DispatchDistributer * 256 + id.z * _DispatchDistributer * _DispatchDistributer * 256;
+	const int vertexCount = ccm_VertexCount;
+	const int vertexID = int(threadID);
+
+	if (vertexID < vertexCount)
+	{
+		const int faceCount = ccm_FaceCount;
+		const int halfedgeID = ccm_VertexToHalfedgeID(cageID, vertexID);
+		const int edgeID = ccm_HalfedgeEdgeID(cageID, halfedgeID);
+		const int prevID = ccm_HalfedgePrevID(cageID, halfedgeID);
+		const int prevEdgeID = ccm_HalfedgeEdgeID(cageID, prevID);
+		const int prevFaceID = ccm_HalfedgeFaceID(cageID, prevID);
+		const float thisS = ccm_HalfedgeSharpness(cageID, halfedgeID);
+		const float prevS = ccm_HalfedgeSharpness(cageID, prevID);
+		const float creaseWeight = sign(thisS);
+		const float prevCreaseWeight = sign(prevS);
+		const int stride = vertexCount + faceCount;
+		const float3 newEdgePoint = ccs_VertexPoint(cageID, stride + edgeID);
+		const float3 newPrevEdgePoint = ccs_VertexPoint(cageID, stride + prevEdgeID);
+		const float3 newPrevFacePoint = ccs_VertexPoint(cageID, vertexCount + prevFaceID);
+		const float3 oldPoint = ccm_VertexPoint(cageID, vertexID);
+		float3 smoothPoint = 4.0f * newPrevEdgePoint - newPrevFacePoint;
+		float3 creasePoint = newPrevEdgePoint * prevCreaseWeight;
+		float avgS = prevS;
+		float creaseCount = prevCreaseWeight;
+		float valence = 1.0f;
+		int forwardIterator;
+		float3 newVertexPoint;
+
+		for (forwardIterator = ccm_HalfedgeTwinID(cageID, prevID);
+			 forwardIterator >= 0 && forwardIterator != halfedgeID;
+			 forwardIterator = ccm_HalfedgeTwinID(cageID, forwardIterator))
+		{
+			const int prevID = ccm_HalfedgePrevID(cageID, forwardIterator);
+			const int prevEdgeID = ccm_HalfedgeEdgeID(cageID, prevID);
+			const int prevFaceID = ccm_HalfedgeFaceID(cageID, prevID);
+			const float3 newPrevEdgePoint = ccs_VertexPoint(cageID, stride + prevEdgeID);
+			const float3 newPrevFacePoint = ccs_VertexPoint(cageID, vertexCount + prevFaceID);
+			const float prevS = ccm_HalfedgeSharpness(cageID, prevID);
+			const float prevCreaseWeight = sign(prevS);
+
+			// smooth contrib
+			smoothPoint += 4.0f * newPrevEdgePoint - newPrevFacePoint;
+			++valence;
+
+			// crease contrib
+			creasePoint += newPrevEdgePoint * prevCreaseWeight;
+			avgS += prevS;
+			creaseCount += prevCreaseWeight;
+
+			// next vertex halfedge
+			forwardIterator = prevID;
+		}
+
+		// boundary corrections
+		if (forwardIterator < 0)
+		{
+			creasePoint += newEdgePoint * creaseWeight;
+			creaseCount += creaseWeight;
+			++valence;
+		}
+
+		// average sharpness
+		avgS /= valence;
+
+		// final smooth point
+		smoothPoint *= 1.0f / (valence * valence);
+		smoothPoint += oldPoint * (1.0f - 3.0f / valence);
+
+		// final crease point
+		creasePoint *= 0.25f;
+		creasePoint += oldPoint * 0.5f;
+
+		// proper vertex rule selection (TODO: make branchless ?)
+		if (creaseCount <= 1.0f)
+		{
+			newVertexPoint = smoothPoint;
+		}
+		else if (creaseCount >= 3.0f || valence == 2.0f)
+		{
+			newVertexPoint = oldPoint;
+		}
+		else
+		{
+			newVertexPoint = lerp(oldPoint, creasePoint, min(1.0f, avgS));
+		}
+
+		WriteVertex(cageID, vertexID, newVertexPoint);
+	}
+}

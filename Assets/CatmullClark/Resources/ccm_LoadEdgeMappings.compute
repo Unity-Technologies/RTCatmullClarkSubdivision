@@ -1,0 +1,50 @@
+#pragma kernel InitBitfield
+#pragma kernel HalfedgeToEdgeMapping
+#pragma kernel EdgeToHalfedgeMapping
+#define CCM_BF_FLAG_WRITE
+#define CCM_HALFEDGE_WRITE
+#define CCM_EDGETOHALFEDGE_WRITE
+#include "ccm_BitField.cginc"
+#include "../CatmullClark_Gather.cginc"
+
+int _DispatchDistributer;
+
+
+[numthreads(256, 1, 1)]
+void InitBitfield(uint3 id : SV_DispatchThreadID)
+{
+	uint threadID = id.x + id.y * _DispatchDistributer * 256 + id.z * _DispatchDistributer * _DispatchDistributer * 256;
+	if (threadID >= ccm_HalfedgeCount)
+		return;
+
+	int halfedgeID = threadID;
+	int twinID = ccm_HalfedgeTwinID(0, halfedgeID);
+	int bitValue = halfedgeID > twinID ? 1 : 0;
+	ccm_bf_SetBit(halfedgeID, bitValue);
+}
+
+
+[numthreads(256, 1, 1)]
+void HalfedgeToEdgeMapping(uint3 id : SV_DispatchThreadID)
+{
+	uint threadID = id.x + id.y * _DispatchDistributer * 256 + id.z * _DispatchDistributer * _DispatchDistributer * 256;
+	if (threadID >= ccm_HalfedgeCount)
+		return;
+
+	int halfedgeID = threadID;
+	int twinID = ccm_HalfedgeTwinID(0, halfedgeID);
+	int bitID = halfedgeID > twinID ? halfedgeID : twinID;
+	ccm_HalfedgeBuffer[halfedgeID].edgeID = ccm_bf_EncodeBit(bitID);
+}
+
+
+[numthreads(256, 1, 1)]
+void EdgeToHalfedgeMapping(uint3 id : SV_DispatchThreadID)
+{
+	uint threadID = id.x + id.y * _DispatchDistributer * 256 + id.z * _DispatchDistributer * _DispatchDistributer * 256;
+	if (threadID >= ccm_EdgeCount)
+		return;
+
+	int edgeID = threadID;
+	ccm_EdgeToHalfedgeBuffer[edgeID] = ccm_bf_DecodeBit(edgeID);
+}

@@ -1,0 +1,13 @@
+﻿#pragma kernel cbt_Dispatcher
+#include "../ConcurrentBinaryTree.cginc"
+
+RWStructuredBuffer<uint> u_CbtDispatchBuffer;
+
+[numthreads(1, 1, 1)]
+void cbt_Dispatcher(uint3 id : SV_DispatchThreadID)
+{
+    u_CbtDispatchBuffer[0] = max(cbt_NodeCount() >> 8, 1);
+    u_CbtDispatchBuffer[1] = 1;
+    u_CbtDispatchBuffer[2] = 1;
+    //u_CbtDispatchBuffer[3] = cbt_NodeCount(); // stored for debugging
+}

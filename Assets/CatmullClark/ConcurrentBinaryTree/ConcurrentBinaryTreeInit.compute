@@ -1,0 +1,44 @@
+﻿#pragma kernel cbt_Clear
+#pragma kernel cbt_ResetToDepth
+
+#define CBT_FLAG_WRITE
+#include "ConcurrentBinaryTree.cginc"
+
+/*******************************************************************************
+ * TerrainSubdivision_Clear -- Clears the bitfield
+ *
+ */
+uniform int u_PassID;
+
+[numthreads(256, 1, 1)]
+void cbt_Clear(uint3 id : SV_DispatchThreadID)
+{
+	uint cnt = (1u << u_PassID);
+	uint threadID = id.x << 5;
+
+	if (threadID < cnt)
+	{
+		uint nodeID = threadID + cnt;
+		uint alignedBitOffset = cbt__NodeBitID(cbt_CreateNode(nodeID, u_PassID));
+		u_CbtBuffer[alignedBitOffset >> 5] = 0;
+	}
+}
+
+/*******************************************************************************
+ * TerrainSubdivision_ResetToDepth -- Initializes a CBT to its a specific subdivision level
+ *
+ */
+uniform int u_ResetMinID;
+uniform int u_ResetMaxID;
+uniform int u_ResetDepth;
+
+[numthreads(256, 1, 1)]
+void cbt_ResetToDepth(uint3 id : SV_DispatchThreadID)
+{
+	int nodeID = id.x + u_ResetMinID;
+	if (nodeID >= u_ResetMaxID)
+		return;
+
+	cbt_Node node = cbt_CreateNode(nodeID, u_ResetDepth);
+	cbt__HeapWrite_BitField(node, 1u);
+}

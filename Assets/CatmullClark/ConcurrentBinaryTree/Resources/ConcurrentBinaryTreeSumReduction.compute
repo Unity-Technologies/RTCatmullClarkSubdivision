@@ -1,0 +1,148 @@
+﻿#pragma kernel cbt_ReductionPrepass
+#pragma kernel cbt_ReductionWriteCached
+#pragma kernel cbt_Reduction
+
+#define CBT_FLAG_WRITE
+#include "../ConcurrentBinaryTree.cginc"
+
+uint u_PassID;
+
+#define THREADS 256 // Keep in sync with UpdateCBTSubdivision code. 
+#define ENABLE_WRITE_CACHE
+
+#ifdef ENABLE_WRITE_CACHE
+groupshared uint gs_WriteCache[THREADS];
+#endif
+
+[numthreads(THREADS, 1, 1)]
+void cbt_ReductionPrepass(uint3 id : SV_DispatchThreadID, uint3 groupId : SV_GroupThreadID)
+{
+	uint cnt = (1u << u_PassID);
+	uint threadID = id.x << 5;
+
+	if (threadID < cnt)
+	{
+		uint nodeID = threadID + cnt;
+		uint alignedBitOffset = cbt__NodeBitID(cbt_CreateNode(nodeID, u_PassID));
+		uint bitField = u_CbtBuffer[alignedBitOffset >> 5];
+
+		// Copy root buffer.
+		u_CbtBuffer[(alignedBitOffset - cnt) >> 5u] = bitField;
+
+#ifdef ENABLE_WRITE_CACHE
+		// Cache the D-5 node bits in the shared memory, so that we group the 6-bit writes into 32-bit ones.
+		gs_WriteCache[groupId.x] = countbits(bitField);
+#else
+		cbt__HeapWriteExplicit(cbt_CreateNode(nodeID >> 5u, u_PassID - 5), 6, countbits(bitField));
+#endif
+	}
+
+#ifdef ENABLE_WRITE_CACHE
+	GroupMemoryBarrierWithGroupSync(); // Sync has to happen without conditionals.
+
+	// Every 16 threads writes 16x6 bits = 96 bits = 3 uints.
+	if (threadID < cnt && (groupId.x & 15) == 0)
+	{
+		uint nodeID = threadID + cnt;
+		uint bitOffset = cbt__NodeBitID(cbt_CreateNode(nodeID >> 5u, u_PassID - 5));
+		uint heapIndex = bitOffset >> 5u;
+
+		// Technically we could write 0s to the bits that are mapped to the next level node. It's okay because
+		// we don't use them.
+
+		u_CbtBuffer[heapIndex] = gs_WriteCache[groupId.x] << 0
+			| gs_WriteCache[groupId.x + 1] << 6
+			| gs_WriteCache[groupId.x + 2] << 12
+			| gs_WriteCache[groupId.x + 3] << 18
+			| gs_WriteCache[groupId.x + 4] << 24
+			| (gs_WriteCache[groupId.x + 5] & 3) << 30;
+
+		if (threadID + (5 << 5) < cnt)
+		{
+			u_CbtBuffer[heapIndex + 1] = gs_WriteCache[groupId.x + 5] >> 2
+				| gs_WriteCache[groupId.x + 6] << 4
+				| gs_WriteCache[groupId.x + 7] << 10
+				| gs_WriteCache[groupId.x + 8] << 16
+				| gs_WriteCache[groupId.x + 9] << 22
+				| (gs_WriteCache[groupId.x + 10] & 15) << 28;
+		}
+
+		if (threadID + (10 << 5) < cnt)
+		{
+			u_CbtBuffer[heapIndex + 2] = gs_WriteCache[groupId.x + 10] >> 4
+				| gs_WriteCache[groupId.x + 11] << 2
+				| gs_WriteCache[groupId.x + 12] << 8
+				| gs_WriteCache[groupId.x + 13] << 14
+				| gs_WriteCache[groupId.x + 14] << 20
+				| gs_WriteCache[groupId.x + 15] << 26;
+		}
+	}
+#endif
+}
+
+uint u_WriteBitStart;
+uint u_WriteBitCountPerGroup;
+
+// Enabled for depths that each group writes to full uints.
+[numthreads(THREADS, 1, 1)]
+void cbt_ReductionWriteCached(uint3 id : SV_DispatchThreadID, uint3 groupId : SV_GroupID, uint3 groupThreadID : SV_GroupThreadID)
+{
+	uint cnt = (1u << u_PassID);
+	uint threadID = id.x;
+
+	if (threadID < cnt)
+	{
+		uint nodeID = threadID + cnt;
+		uint x0 = cbt_HeapRead(cbt_CreateNode(nodeID << 1u, u_PassID + 1));
+		uint x1 = cbt_HeapRead(cbt_CreateNode(nodeID << 1u | 1u, u_PassID + 1));
+#ifdef ENABLE_WRITE_CACHE
+		gs_WriteCache[groupThreadID.x] = x0 + x1;
+#else
+		cbt__HeapWrite(cbt_CreateNode(nodeID, u_PassID), x0 + x1);
+#endif
+	}
+
+#ifdef ENABLE_WRITE_CACHE
+	GroupMemoryBarrierWithGroupSync();
+
+	// Combine bit writing into uints.
+	// The total bit range for a group is: [u_WriteBitStart + groupID * u_WriteBitCountPerGroup, u_WriteBitStart + (groupID + 1) * u_WriteBitCountPerGroup - 1].
+	uint2 groupWriteBitBounds = u_WriteBitStart.xx + (groupId.xx + uint2(0, 1)) * u_WriteBitCountPerGroup + uint2(0, -1);
+	// Convert bits into heap indices.
+	uint2 groupWriteIndexBounds = groupWriteBitBounds >> 5u;
+	uint nodeBitSize = cbt__NodeBitSize(u_PassID);
+
+	// Select the first n threads in a group to write out n uints.
+	if (groupThreadID.x <= groupWriteIndexBounds.y - groupWriteIndexBounds.x)
+	{
+		// Figure out the gs_WriteCache index range for composing this uint.
+		uint gsIndexBegin = (groupThreadID.x << 5u) / nodeBitSize;
+		uint gsIndexEnd = ((groupThreadID.x << 5u) + 32u + nodeBitSize - 1u) / nodeBitSize;
+		// The initial bit offset of the first gs_WriteCache entry that should be shifted towards the LSB.
+		uint offset = groupThreadID.x * 32u - gsIndexBegin * nodeBitSize;
+
+		uint x = gs_WriteCache[gsIndexBegin] >> offset;
+		for (uint gsIndex = gsIndexBegin + 1; gsIndex < gsIndexEnd; ++gsIndex)
+		{
+			x |= gs_WriteCache[gsIndex] << ((gsIndex - gsIndexBegin) * nodeBitSize - offset);
+		}
+
+		u_CbtBuffer[groupWriteIndexBounds.x + groupThreadID.x] = x;
+	}
+#endif
+}
+
+[numthreads(THREADS, 1, 1)]
+void cbt_Reduction(uint3 id : SV_DispatchThreadID)
+{
+	uint cnt = (1u << u_PassID);
+	uint threadID = id.x;
+
+	if (threadID < cnt) {
+		uint nodeID = threadID + cnt;
+		uint x0 = cbt_HeapRead(cbt_CreateNode(nodeID << 1u, u_PassID + 1));
+		uint x1 = cbt_HeapRead(cbt_CreateNode(nodeID << 1u | 1u, u_PassID + 1));
+
+		cbt__HeapWrite(cbt_CreateNode(nodeID, u_PassID), x0 + x1);
+	}
+}

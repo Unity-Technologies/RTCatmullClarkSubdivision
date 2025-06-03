@@ -1,0 +1,217 @@
+﻿#pragma kernel cct_Update_Split
+#pragma kernel cct_Update_Merge
+#define CBT_FLAG_WRITE
+#include "../CatmullClark_Gather.cginc"
+#include "../ConcurrentBinaryTree/ConcurrentBinaryTree.cginc"
+#include "../CatmullClarkTessellation.cginc"
+#include "../FrustumCulling.cginc"
+
+#pragma multi_compile __ CATMULL_CLARK_DISPLACEMENT
+#undef CATMULL_CLARK_DISPLACEMENT // Use this to ignore displacement map in tessellation update and culling (works well enough usually)
+
+uniform float4x4 u_ModelViewMatrix;
+uniform float4x4 u_ModelViewProjectionMatrix;
+uniform float u_LodFactor;
+uniform float u_ReverseWindingBackfaceCulling;
+
+
+/*******************************************************************************
+ * DecodeFaceVertices -- Computes the vertices of the face in mesh space
+ *
+ */
+float3x3 DecodeFaceVertices(const in cbt_Node node, const int subdID)
+{
+	const cct_Face face = cct_DecodeFace(node, subdID);
+	const int bisectionDepth = cct_NodeBisectionDepth(node, subdID);
+	const int ccDepth = 1 + (bisectionDepth >> 1);
+
+	float3x3 faceVertices = float3x3
+	(
+		ccs_HalfedgeVertexPoint(subdID, face.halfedgeIDs[0], ccDepth),
+		ccs_HalfedgeVertexPoint(subdID, face.halfedgeIDs[1], ccDepth),
+		ccs_HalfedgeVertexPoint(subdID, face.halfedgeIDs[2], ccDepth)
+	);
+
+#ifdef _CATMULLCLARKDISPLACEMENT
+	float3x3 faceNormals = float3x3
+	(
+		ccs_HalfedgeNormal(subdID, face.halfedgeIDs[0], ccDepth),
+		ccs_HalfedgeNormal(subdID, face.halfedgeIDs[1], ccDepth),
+		ccs_HalfedgeNormal(subdID, face.halfedgeIDs[2], ccDepth)
+	);
+	faceVertices[0] = ApplyDisplacementMapWithoutCracks(subdID, face.halfedgeIDs[0], ccDepth, faceVertices[0], faceNormals[0]);
+	faceVertices[1] = ApplyDisplacementMapWithoutCracks(subdID, face.halfedgeIDs[1], ccDepth, faceVertices[1], faceNormals[1]);
+	faceVertices[2] = ApplyDisplacementMapWithoutCracks(subdID, face.halfedgeIDs[2], ccDepth, faceVertices[2], faceNormals[2]);
+#endif
+
+	return faceVertices;
+}
+
+
+/*******************************************************************************
+ * FrustumCullingTest -- Checks if the triangle lies inside the view frutsum
+ *
+ * This function depends on FrustumCulling.glsl
+ *
+ */
+bool FrustumCullingTest(in const float3x3 patchVertices)
+{
+	float3 bmin = min(min(patchVertices[0], patchVertices[1]), patchVertices[2]);
+	float3 bmax = max(max(patchVertices[0], patchVertices[1]), patchVertices[2]);
+
+	return FrustumCullingTest(transpose(u_ModelViewProjectionMatrix), bmin, bmax);
+}
+
+
+/*******************************************************************************
+ * BackfaceCullingTest -- Checks if the triangle is backfacing wrt the camera
+ *
+ */
+bool BackfaceCullingTest(in const float3x3 patchVertices)
+{
+	float3 e0 = patchVertices[1] - patchVertices[0];
+	float3 e1 = patchVertices[2] - patchVertices[0];
+	float3 faceNormal = -cross(e1, e0);
+	if (u_ReverseWindingBackfaceCulling > 0.5)
+		faceNormal = -faceNormal;
+	float3 viewDir = patchVertices[0] + patchVertices[1] + patchVertices[2];
+
+	return dot(viewDir, faceNormal) >= 0.0;
+}
+
+
+/*******************************************************************************
+ * EdgeLevelOfDetail -- Computes the LoD assocaited to an edge
+ *
+ * This function is used to garantee a user-specific pixel edge length in
+ * screen space. The vertices must be expressed in view space.
+ * We compute the LoD as:
+ *      LoD = 2 * log2(EdgePixelLength / TargetPixelLength)
+ */
+float EdgeLevelOfDetail_Perspective(in const float3 v0, in const float3 v1)
+{
+#if 0 //  human-readable version
+	float3 edgeCenter = (v1 + v0); // division by 2 was moved to u_LodFactor
+	float3 edgeVector = (v1 - v0);
+	float distanceToEdgeSqr = dot(edgeCenter, edgeCenter);
+	float edgeLengthSqr = dot(edgeVector, edgeVector);
+
+	return u_LodFactor + log2(edgeLengthSqr / distanceToEdgeSqr);
+#else // optimized version
+	float sqrMagSum = dot(v0, v0) + dot(v1, v1);
+	float twoDotAC = 2.0 * dot(v0, v1);
+	float distanceToEdgeSqr = sqrMagSum + twoDotAC;
+	float edgeLengthSqr = sqrMagSum - twoDotAC;
+
+	return u_LodFactor + log2(edgeLengthSqr / distanceToEdgeSqr);
+#endif
+}
+
+
+/*******************************************************************************
+ * TriangleLevelOfDetail -- Computes the LoD assocaited to a triangle
+ *
+ * This function is used to garantee a user-specific pixel edge length in
+ * screen space. The reference edge length is that of the longest edge of the
+ * input triangle.In practice, we compute the LoD as:
+ *      LoD = 2 * log2(EdgePixelLength / TargetPixelLength)
+ * where the factor 2 is because the number of segments doubles every 2
+ * subdivision level.
+ */
+float TriangleLevelOfDetail_Perspective(in const float3x3 faceVertices)
+{
+	const float3x3 v = float3x3
+	(
+		mul(u_ModelViewMatrix, float4(faceVertices[0], 1.0f)).xyz,
+		mul(u_ModelViewMatrix, float4(faceVertices[1], 1.0f)).xyz,
+		mul(u_ModelViewMatrix, float4(faceVertices[2], 1.0f)).xyz
+	);
+	const float l0 = EdgeLevelOfDetail_Perspective(v[0], v[1]);
+	const float l1 = EdgeLevelOfDetail_Perspective(v[1], v[2]);
+	const float l2 = EdgeLevelOfDetail_Perspective(v[2], v[0]);
+
+	if (BackfaceCullingTest(v))
+#if 1 //FLAG_MERGE
+		return max(l0, max(l1, l2));
+#else
+		return min(l0, min(l1, l2));
+#endif
+	else
+		return -1.0f;
+}
+
+
+/*******************************************************************************
+ * LevelOfDetail -- Computes the level of detail of associated to a triangle
+ *
+ * The first component is the actual LoD value. The second value is 0 if the
+ * triangle is culled, and one otherwise.
+ *
+ */
+float2 LevelOfDetail(in const float3x3 faceVertices)
+{
+	// culling test
+	if (!FrustumCullingTest(faceVertices))
+		return float2(0.0f, 0.0f);
+
+	// compute triangle LOD
+	return float2(TriangleLevelOfDetail_Perspective(faceVertices), 1.0f);
+}
+
+
+[numthreads(256, 1, 1)]
+void cct_Update_Split(uint3 id : SV_DispatchThreadID)
+{
+	// get threadID
+	const int cbtID = 0;
+	const int subdID = 0;
+	const uint threadID = id.x;
+	const int faceID = int(threadID);
+
+	if (faceID < cct_FaceCount(cbtID, subdID))
+	{
+		// and extract triangle vertices
+		const cbt_Node node = cbt_DecodeNode(threadID);
+		const float3x3 faceVertices = DecodeFaceVertices(node, subdID);
+
+		// compute target LoD
+		const float2 targetLod = LevelOfDetail(faceVertices);
+
+		// splitting update
+		if (targetLod.x > 1.0)// && node.depth < cbt_MaxDepth() - 1)
+		{
+			cct_SplitNode(cbtID, node, subdID);
+		}
+	}
+}
+
+
+[numthreads(256, 1, 1)]
+void cct_Update_Merge(uint3 id : SV_DispatchThreadID)
+{
+	// get threadID
+	const int cbtID = 0;
+	const int subdID = 0;
+	const uint threadID = id.x;
+	const int faceID = int(threadID);
+
+	if (faceID < cct_FaceCount(cbtID, subdID))
+	{
+		// and extract triangle vertices
+		const cbt_Node node = cbt_DecodeNode(threadID);
+		const float3x3 faceVertices = DecodeFaceVertices(node, subdID);
+
+		// compute target LoD
+		const float2 targetLod = LevelOfDetail(faceVertices);
+
+		// merging update
+		const cct_DiamondParent diamond = cct_DecodeDiamondParent(node, subdID);
+		const bool shouldMergeBase = LevelOfDetail(DecodeFaceVertices(diamond.base, subdID)).x < 1.0;
+		const bool shouldMergeTop = LevelOfDetail(DecodeFaceVertices(diamond.top, subdID)).x < 1.0;
+
+		if (shouldMergeBase && shouldMergeTop)
+		{
+			cct_MergeNode(cbtID, node, diamond, subdID);
+		}
+	}
+}

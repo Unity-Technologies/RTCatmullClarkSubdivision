@@ -1,0 +1,134 @@
+#pragma kernel TriangleAndQuadOnly
+#pragma kernel InitBitfield
+#pragma kernel HalfedgeToFaceMapping
+#pragma kernel FaceToHalfedgeMapping
+#define CCM_BF_FLAG_WRITE
+#define CCM_HALFEDGE_WRITE
+#define CCM_FACETOHALFEDGE_WRITE
+#include "ccm_BitField.cginc"
+#include "../CatmullClark_Gather.cginc"
+
+int _DispatchDistributer;
+int _SubmeshCount;
+StructuredBuffer<int> _SubmeshInfoBuffer;
+StructuredBuffer<int> _MergedIndexBuffer;
+
+
+[numthreads(256, 1, 1)]
+void TriangleAndQuadOnly(uint3 id : SV_DispatchThreadID)
+{
+	uint threadID = id.x + id.y * _DispatchDistributer * 256 + id.z * _DispatchDistributer * _DispatchDistributer * 256;
+	if (threadID >= ccm_FaceCount)
+		return;
+
+	int faceID = threadID;
+	int submeshID = 0;
+	int faceCounter = 0;
+	int faceOffset = 0;
+	while (submeshID < _SubmeshCount && faceID >= faceCounter + _SubmeshInfoBuffer[submeshID * 2 + 1])
+	{
+		faceCounter += _SubmeshInfoBuffer[submeshID * 2 + 1];
+		faceOffset += _SubmeshInfoBuffer[submeshID * 2 + 1] * _SubmeshInfoBuffer[submeshID * 2 + 0];
+		submeshID++;
+	}
+	int faceIndexCount = _SubmeshInfoBuffer[submeshID * 2 + 0];
+	int faceBufferStart = faceOffset + (faceID - faceCounter) * faceIndexCount;
+
+
+	// Halfedge to face mapping
+	for (int i = 0; i < faceIndexCount; i++)
+	{
+		ccm_HalfedgeBuffer[faceBufferStart + i].faceID = faceID;
+
+		ccm_HalfedgeBuffer[faceBufferStart + i].vertexID = _MergedIndexBuffer[faceBufferStart + i];
+		ccm_HalfedgeBuffer[faceBufferStart + i].uvID = _MergedIndexBuffer[faceBufferStart + i]; // TODO : handle vertex welding for UV discontinuities
+
+		ccm_HalfedgeBuffer[faceBufferStart + i].nextID = i < faceIndexCount - 1 ? faceBufferStart + i + 1 : faceBufferStart;
+		ccm_HalfedgeBuffer[faceBufferStart + i].prevID = i > 0 ? faceBufferStart + i - 1 : faceBufferStart + (faceIndexCount - 1);
+	}
+
+	// Face to halfedge mapping
+	ccm_FaceToHalfedgeBuffer[faceID] = faceBufferStart;
+}
+
+
+[numthreads(256, 1, 1)]
+void InitBitfield(uint3 id : SV_DispatchThreadID)
+{
+	uint threadID = id.x + id.y * _DispatchDistributer * 256 + id.z * _DispatchDistributer * _DispatchDistributer * 256;
+	if (threadID >= ccm_FaceCount)
+		return;
+
+	int faceID = threadID;
+	int submeshID = 0;
+	int faceCounter = 0;
+	int faceOffset = 0;
+	while (submeshID < _SubmeshCount && faceID >= faceCounter + _SubmeshInfoBuffer[submeshID * 2 + 1])
+	{
+		faceCounter += _SubmeshInfoBuffer[submeshID * 2 + 1];
+		faceOffset += _SubmeshInfoBuffer[submeshID * 2 + 1] * _SubmeshInfoBuffer[submeshID * 2 + 0];
+		submeshID++;
+	}
+	ccm_bf_SetBit(faceOffset + (faceID - faceCounter) * _SubmeshInfoBuffer[submeshID * 2 + 0], 1);
+
+	if (threadID == 0)
+		ccm_bf_SetBit(ccm_HalfedgeCount, 1);
+}
+
+int FaceScroll(int id, int direction, int maxValue)
+{
+	int n = maxValue - 1;
+	int d = direction;
+	int u = (d + 1) >> 1; // in [0, 1]
+	int un = u * n; // precomputation
+
+	return (id == un) ? (n - un) : (id + d);
+}
+
+int ScrollFaceHalfedgeID(
+	int halfedgeID,
+	int halfedgeFaceBeginID,
+	int halfedgeFaceEndID,
+	int direction)
+{
+	int faceHalfedgeCount = halfedgeFaceEndID - halfedgeFaceBeginID;
+	int localHalfedgeID = halfedgeID - halfedgeFaceBeginID;
+	int nextHalfedgeID = FaceScroll(localHalfedgeID,
+		direction,
+		faceHalfedgeCount);
+
+	return halfedgeFaceBeginID + nextHalfedgeID;
+}
+
+[numthreads(256, 1, 1)]
+void HalfedgeToFaceMapping(uint3 id : SV_DispatchThreadID)
+{
+	uint threadID = id.x + id.y * _DispatchDistributer * 256 + id.z * _DispatchDistributer * _DispatchDistributer * 256;
+	if (threadID >= ccm_HalfedgeCount)
+		return;
+
+	int halfedgeID = threadID;
+	int tmp = ccm_bf_EncodeBit(halfedgeID);
+	int faceID = tmp - (ccm_bf_GetBit(halfedgeID) ^ 1);
+
+	int beginID = ccm_bf_DecodeBit(faceID);
+	int endID = ccm_bf_DecodeBit(faceID + 1);
+	int nextID = ScrollFaceHalfedgeID(halfedgeID, beginID, endID, +1);
+	int prevID = ScrollFaceHalfedgeID(halfedgeID, beginID, endID, -1);
+
+	ccm_HalfedgeBuffer[halfedgeID].faceID = faceID;
+	ccm_HalfedgeBuffer[halfedgeID].nextID = nextID;
+	ccm_HalfedgeBuffer[halfedgeID].prevID = prevID;
+}
+
+
+[numthreads(256, 1, 1)]
+void FaceToHalfedgeMapping(uint3 id : SV_DispatchThreadID)
+{
+	uint threadID = id.x + id.y * _DispatchDistributer * 256 + id.z * _DispatchDistributer * _DispatchDistributer * 256;
+	if (threadID >= ccm_FaceCount)
+		return;
+
+	int faceID = threadID;
+	ccm_FaceToHalfedgeBuffer[faceID] = ccm_bf_DecodeBit(faceID);
+}

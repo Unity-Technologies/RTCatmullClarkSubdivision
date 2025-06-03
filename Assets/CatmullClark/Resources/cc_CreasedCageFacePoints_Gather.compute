@@ -1,0 +1,38 @@
+#pragma kernel CSMain
+#define CCS_VERTEX_WRITE
+#include "../CatmullClark_Gather.cginc"
+
+
+int _DispatchDistributer;
+
+[numthreads(256, 1, 1)]
+void CSMain(uint3 id : SV_DispatchThreadID)
+{
+	const int cageID = 0;
+	const uint threadID = id.x + id.y * _DispatchDistributer * 256 + id.z * _DispatchDistributer * _DispatchDistributer * 256;
+	const int faceCount = ccm_FaceCount;
+	const int faceID = int(threadID);
+
+	if (faceID < faceCount)
+	{
+		const int vertexCount = ccm_VertexCount;
+		const int vertexID = vertexCount + faceID;
+		const int halfedgeID = ccm_FaceToHalfedgeID(cageID, faceID);
+		float3 newFacePoint = ccm_HalfedgeVertexPoint(cageID, halfedgeID);
+		float faceVertexCount = 1.0f;
+
+		for (int halfedgeIt = ccm_HalfedgeNextID(cageID, halfedgeID);
+				 halfedgeIt != halfedgeID;
+				 halfedgeIt = ccm_HalfedgeNextID(cageID, halfedgeIt))
+		{
+			const float3 vertexPoint = ccm_HalfedgeVertexPoint(cageID, halfedgeIt);
+
+			newFacePoint += vertexPoint;
+			++faceVertexCount;
+		}
+
+		newFacePoint /= faceVertexCount;
+
+		WriteVertex(cageID, vertexID, newFacePoint);
+	}
+}

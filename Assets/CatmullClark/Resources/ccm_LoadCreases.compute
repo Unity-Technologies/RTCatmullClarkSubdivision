@@ -1,0 +1,94 @@
+#pragma kernel InitCreasesAndMakeBoundariesSharp
+#pragma kernel ComputeCreaseNeighbors
+#define CCM_CREASE_WRITE
+#include "../CatmullClark_Gather.cginc"
+
+int _DispatchDistributer;
+
+
+[numthreads(256, 1, 1)]
+void InitCreasesAndMakeBoundariesSharp(uint3 id : SV_DispatchThreadID)
+{
+	uint threadID = id.x + id.y * _DispatchDistributer * 256 + id.z * _DispatchDistributer * _DispatchDistributer * 256;
+	if (threadID >= ccm_HalfedgeCount)
+		return;
+
+	int edgeID = threadID;
+	ccm_CreaseBuffer[edgeID].nextID = edgeID;
+	ccm_CreaseBuffer[edgeID].prevID = edgeID;
+
+	int halfedgeID = ccm_EdgeToHalfedgeID(0, edgeID);
+	int twinID = ccm_HalfedgeTwinID(0, halfedgeID);
+	if (twinID < 0)
+	{
+		ccm_CreaseBuffer[edgeID].sharpness = 16.0f;
+	}
+}
+
+
+[numthreads(256, 1, 1)]
+void ComputeCreaseNeighbors(uint3 id : SV_DispatchThreadID)
+{
+	uint threadID = id.x + id.y * _DispatchDistributer * 256 + id.z * _DispatchDistributer * _DispatchDistributer * 256;
+	if (threadID >= ccm_HalfedgeCount)
+		return;
+
+	int edgeID = threadID;
+
+	float sharpness = ccm_CreaseSharpness(0, edgeID);
+
+	if (sharpness > 0.0f)
+	{
+		int halfedgeID = ccm_EdgeToHalfedgeID(0, edgeID);
+		int nextID = ccm_HalfedgeNextID(0, halfedgeID);
+		int prevCreaseCount = 0;
+		int prevCreaseID = -1;
+		int nextCreaseCount = 0;
+		int nextCreaseID = -1;
+		int halfedgeIt;
+
+		for (halfedgeIt = ccm_NextVertexHalfedgeID(0, halfedgeID);
+			halfedgeIt != halfedgeID && halfedgeIt >= 0;
+			halfedgeIt = ccm_NextVertexHalfedgeID(0, halfedgeIt))
+		{
+			float s = ccm_HalfedgeSharpness(0, halfedgeIt);
+
+			if (s > 0.0f)
+			{
+				prevCreaseID = ccm_HalfedgeEdgeID(0, halfedgeIt);
+				++prevCreaseCount;
+			}
+		}
+
+		if (prevCreaseCount == 1 && halfedgeIt == halfedgeID)
+		{
+			ccm_CreaseBuffer[edgeID].prevID = prevCreaseID;
+		}
+
+		if (ccm_HalfedgeSharpness(0, nextID) > 0.0f)
+		{
+			nextCreaseID = ccm_HalfedgeEdgeID(0, nextID);
+			++nextCreaseCount;
+		}
+
+		for (halfedgeIt = ccm_NextVertexHalfedgeID(0, nextID);
+			halfedgeIt != nextID && halfedgeIt >= 0;
+			halfedgeIt = ccm_NextVertexHalfedgeID(0, halfedgeIt))
+		{
+			float s = ccm_HalfedgeSharpness(0, halfedgeIt);
+			int twinID = ccm_HalfedgeTwinID(0, halfedgeIt);
+
+			// twin check is to avoid counting for halfedgeID
+			if (s > 0.0f && twinID != halfedgeID)
+			{
+				nextCreaseID = ccm_HalfedgeEdgeID(0, halfedgeIt);
+				++nextCreaseCount;
+			}
+		}
+
+		if (nextCreaseCount == 1 && halfedgeIt == nextID)
+		{
+			ccm_CreaseBuffer[edgeID].nextID = nextCreaseID;
+		}
+	}
+}

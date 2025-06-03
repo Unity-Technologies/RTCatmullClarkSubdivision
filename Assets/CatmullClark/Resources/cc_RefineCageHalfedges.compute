@@ -1,0 +1,67 @@
+#pragma kernel CSMain
+#define CCS_HALFEDGE_WRITE
+#include "../CatmullClark_Gather.cginc"
+
+void WriteHalfedge(const int cageID, int halfedgeID, in const cc_Halfedge_Quad halfedge)
+{
+	ccs_HalfedgeBuffer[halfedgeID] = halfedge;
+}
+
+int _DispatchDistributer;
+
+[numthreads(256, 1, 1)]
+void CSMain(uint3 id : SV_DispatchThreadID)
+{
+	const int cageID = 0;
+	const uint threadID = id.x + id.y * _DispatchDistributer * 256 + id.z * _DispatchDistributer * _DispatchDistributer * 256;
+	const int halfedgeCount = ccm_HalfedgeCount;
+	const int halfedgeID = int(threadID);
+
+	if (halfedgeID < halfedgeCount)
+	{
+		const int vertexCount = ccm_VertexCount;
+		const int edgeCount = ccm_EdgeCount;
+		const int faceCount = ccm_FaceCount;
+		const int vertexID = ccm_HalfedgeVertexID(cageID, halfedgeID);
+		const int twinID = ccm_HalfedgeTwinID(cageID, halfedgeID);
+		const int prevID = ccm_HalfedgePrevID(cageID, halfedgeID);
+		const int nextID = ccm_HalfedgeNextID(cageID, halfedgeID);
+		const int faceID = ccm_HalfedgeFaceID(cageID, halfedgeID);
+		const int edgeID = ccm_HalfedgeEdgeID(cageID, halfedgeID);
+		const int prevEdgeID = ccm_HalfedgeEdgeID(cageID, prevID);
+		const int prevTwinID = ccm_HalfedgeTwinID(cageID, prevID);
+		const int twinNextID =
+			twinID >= 0 ? ccm_HalfedgeNextID(cageID, twinID) : -1;
+		cc_Halfedge_Quad newHalfedges[4];
+
+		// twinIDs
+		newHalfedges[0].twinID = 4 * twinNextID + 3;
+		newHalfedges[1].twinID = 4 * nextID + 2;
+		newHalfedges[2].twinID = 4 * prevID + 1;
+		newHalfedges[3].twinID = 4 * prevTwinID + 0;
+
+		// edgeIDs
+		newHalfedges[0].edgeID = 2 * edgeID + (halfedgeID > twinID ? 0 : 1);
+		newHalfedges[1].edgeID = 2 * edgeCount + halfedgeID;
+		newHalfedges[2].edgeID = 2 * edgeCount + prevID;
+		newHalfedges[3].edgeID = 2 * prevEdgeID + (prevID > prevTwinID ? 1 : 0);
+
+		// vertexIDs
+		newHalfedges[0].vertexID = vertexID;
+		newHalfedges[1].vertexID = vertexCount + faceCount + edgeID;
+		newHalfedges[2].vertexID = vertexCount + faceID;
+		newHalfedges[3].vertexID = vertexCount + faceCount + prevEdgeID;
+		
+		// uvIDs
+		newHalfedges[0].uvID = 0;
+		newHalfedges[1].uvID = 0;
+		newHalfedges[2].uvID = 0;
+		newHalfedges[3].uvID = 0;
+
+		// write data
+		WriteHalfedge(cageID, 4 * halfedgeID + 0, newHalfedges[0]);
+		WriteHalfedge(cageID, 4 * halfedgeID + 1, newHalfedges[1]);
+		WriteHalfedge(cageID, 4 * halfedgeID + 2, newHalfedges[2]);
+		WriteHalfedge(cageID, 4 * halfedgeID + 3, newHalfedges[3]);
+	}
+}

@@ -1,0 +1,21 @@
+# For more information about the available options please visit: http://go/catalog-info (VPN required)
+apiVersion: backstage.io/v1alpha1
+kind: Component
+metadata:
+  annotations:
+    github.com/project-slug: Unity-Technologies/RTCatmullClarkSubdivision
+  name: RTCatmullClarkSubdivision
+  description: "This Unity Project is a demo of research work enabling parallelized Catmull-Clark subdivision on the GPU with adaptively-subdivided rendering. "
+  labels:
+    costcenter: "7054"
+  tags:
+    - planned-public
+    - enterprise
+  links:
+    - url: https://unity.slack.com/messages/C0234SBEG2F/
+      title: "#labs-gpu-subd"
+      icon: chat
+spec:
+  type: unity-package
+  lifecycle: production
+  owner: Unity-Technologies/pixyz-devops

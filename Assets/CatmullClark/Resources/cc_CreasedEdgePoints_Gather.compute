@@ -1,0 +1,54 @@
+#pragma kernel CSMain
+#define CCS_VERTEX_WRITE
+#include "../CatmullClark_Gather.cginc"
+
+uniform int u_Depth;
+
+float3 EdgePoint_Smooth(in const float3 ve[2], in const float3 vf[2])
+{
+	return (ve[0] + ve[1] + vf[0] + vf[1]) / 4.0f;
+}
+
+float3 EdgePoint_Crease(in const float3 ve[2])
+{
+	return (ve[0] + ve[1]) / 2.0f;
+}
+
+int _DispatchDistributer;
+
+[numthreads(256, 1, 1)]
+void CSMain(uint3 id : SV_DispatchThreadID)
+{
+	const int cageID = 0;
+	const uint threadID = id.x + id.y * _DispatchDistributer * 256 + id.z * _DispatchDistributer * _DispatchDistributer * 256;
+	const int depth = u_Depth;
+	const int edgeID = int(threadID);
+	const int edgeCount = ccm_EdgeCountAtDepth_Fast(cageID, depth);
+
+	if (edgeID < edgeCount)
+	{
+		const int vertexCount = ccm_VertexCountAtDepth_Fast(cageID, depth);
+		const int faceCount = ccm_FaceCountAtDepth_Fast(cageID, depth);
+		const int vertexID = vertexCount + faceCount + edgeID;
+		const int halfedgeID = ccs_EdgeToHalfedgeID(cageID, edgeID, depth);
+		const int twinID = ccs_HalfedgeTwinID(cageID, halfedgeID, depth);
+		const int nextID = ccs_HalfedgeNextID(cageID, halfedgeID, depth);
+		const float sharp = ccs_CreaseSharpness(cageID, edgeID, depth);
+		const float edgeWeight = min(sharp, 1.0f);
+		const float3 oldEdgePoints[2] =
+		{
+			ccs_HalfedgeVertexPoint(cageID, halfedgeID, depth),
+			ccs_HalfedgeVertexPoint(cageID, nextID, depth)
+		};
+		const float3 newAdjacentFacePoints[2] =
+		{
+			ccs_VertexPoint(cageID, vertexCount + ccm_HalfedgeFaceID_Quad(halfedgeID)),
+			ccs_VertexPoint(cageID, vertexCount + ccm_HalfedgeFaceID_Quad(max(0, twinID)))
+		};
+		const float3 creaseEdgePoint = EdgePoint_Crease(oldEdgePoints);
+		const float3 smoothEdgePoint = EdgePoint_Smooth(oldEdgePoints, newAdjacentFacePoints);
+		const float3 newEdgePoint = lerp(smoothEdgePoint, creaseEdgePoint, edgeWeight);
+
+		WriteVertex(cageID, vertexID, newEdgePoint);
+	}
+}

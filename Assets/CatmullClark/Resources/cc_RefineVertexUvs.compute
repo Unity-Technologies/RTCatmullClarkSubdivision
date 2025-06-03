@@ -1,0 +1,52 @@
+#pragma kernel CSMain
+#define CCS_HALFEDGE_WRITE
+#include "../CatmullClark_Gather.cginc"
+
+uniform int u_Depth;
+
+void WriteHalfedgeUv(const int cageID, int depth, int halfedgeID, float2 uv)
+{
+	const int stride = ccs_CumulativeHalfedgeCountAtDepth(cageID, depth);
+
+	ccs_HalfedgeBuffer[stride + halfedgeID].uvID = cc__EncodeUv(uv);
+}
+
+int _DispatchDistributer;
+
+[numthreads(256, 1, 1)]
+void CSMain(uint3 id : SV_DispatchThreadID)
+{
+	const int cageID = 0;
+	const uint threadID = id.x + id.y * _DispatchDistributer * 256 + id.z * _DispatchDistributer * _DispatchDistributer * 256;
+	const int depth = u_Depth;
+	const int halfedgeCount = ccm_HalfedgeCountAtDepth(cageID, depth);
+	const int halfedgeID = int(threadID);
+
+	if (halfedgeID < halfedgeCount)
+	{
+		const int prevID = ccs_HalfedgePrevID(cageID, halfedgeID, depth);
+		const int nextID = ccs_HalfedgeNextID(cageID, halfedgeID, depth);
+		const float2 uv = ccs_HalfedgeVertexUv(cageID, halfedgeID, depth);
+		const float2 nextUv = ccs_HalfedgeVertexUv(cageID, nextID, depth);
+		const float2 prevUv = ccs_HalfedgeVertexUv(cageID, prevID, depth);
+		const float2 edgeUv = (uv + nextUv) * 0.5f;
+		const float2 prevEdgeUv = (uv + prevUv) * 0.5f;
+		float2 faceUv = uv;
+
+		for (int halfedgeIt = ccm_HalfedgeNextID_Quad(halfedgeID);
+				 halfedgeIt != halfedgeID;
+				 halfedgeIt = ccm_HalfedgeNextID_Quad(halfedgeIt))
+		{
+			const float2 uv = ccs_HalfedgeVertexUv(cageID, halfedgeIt, depth);
+
+			faceUv += uv;
+		}
+
+		faceUv *= 0.25f;
+
+		WriteHalfedgeUv(cageID, depth, 4 * halfedgeID + 0, uv);
+		WriteHalfedgeUv(cageID, depth, 4 * halfedgeID + 1, edgeUv);
+		WriteHalfedgeUv(cageID, depth, 4 * halfedgeID + 2, faceUv);
+		WriteHalfedgeUv(cageID, depth, 4 * halfedgeID + 3, prevEdgeUv);
+	}
+}

@@ -1,0 +1,49 @@
+#pragma kernel CSMain
+#define CCS_CREASE_WRITE
+#include "../CatmullClark_Gather.cginc"
+
+uniform int u_Depth;
+
+void WriteHalfedge(const int cageID, int edgeID, in const cc_Crease crease)
+{
+	ccs_CreaseBuffer[edgeID] = crease;
+}
+
+int _DispatchDistributer;
+
+[numthreads(256, 1, 1)]
+void CSMain(uint3 id : SV_DispatchThreadID)
+{
+	const int cageID = 0;
+	const uint threadID = id.x + id.y * _DispatchDistributer * 256 + id.z * _DispatchDistributer * _DispatchDistributer * 256;
+	const int edgeCount = ccm_EdgeCount;
+	const int edgeID = int(threadID);
+
+	if (edgeID < edgeCount)
+	{
+		const int nextID = ccm_CreaseNextID(cageID, edgeID);
+		const int prevID = ccm_CreasePrevID(cageID, edgeID);
+		const bool t1 = ccm_CreasePrevID(cageID, nextID) == edgeID;
+		const bool t2 = ccm_CreaseNextID(cageID, prevID) == edgeID;
+		const float thisS = 3.0f * ccm_CreaseSharpness(cageID, edgeID);
+		const float nextS = ccm_CreaseSharpness(cageID, nextID);
+		const float prevS = ccm_CreaseSharpness(cageID, prevID);
+		cc_Crease newCreases[2];
+
+		// next rule
+		newCreases[0].nextID = 2 * edgeID + 1;
+		newCreases[1].nextID = 2 * nextID + (t1 ? 0 : 1);
+
+		// prev rule
+		newCreases[0].prevID = 2 * prevID + (t2 ? 1 : 0);
+		newCreases[1].prevID = 2 * edgeID + 0;
+
+		// sharpness rule
+		newCreases[0].sharpness = max(0.0f, (prevS + thisS) / 4.0f - 1.0f);
+		newCreases[1].sharpness = max(0.0f, (thisS + nextS) / 4.0f - 1.0f);
+
+		// write data
+		WriteHalfedge(cageID, 2 * edgeID + 0, newCreases[0]);
+		WriteHalfedge(cageID, 2 * edgeID + 1, newCreases[1]);
+	}
+}

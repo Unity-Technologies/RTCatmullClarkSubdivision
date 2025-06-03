@@ -1,0 +1,23 @@
+﻿#pragma kernel cct_Dispatcher
+#include "../CatmullClark_Gather.cginc"
+#include "../ConcurrentBinaryTree/ConcurrentBinaryTree.cginc"
+#include "../CatmullClarkTessellation.cginc"
+
+RWStructuredBuffer<uint> u_CctDispatchBuffer;
+
+[numthreads(1, 1, 1)]
+void cct_Dispatcher(uint3 id : SV_DispatchThreadID)
+{
+	const int cbtID = 0;
+	const int subdID = 0;
+	int faceCount = cct_FaceCount(cbtID, subdID);
+
+	u_CctDispatchBuffer[0] = 3 * faceCount;
+	u_CctDispatchBuffer[1] = 1;
+	u_CctDispatchBuffer[2] = 0;
+	u_CctDispatchBuffer[3] = 0;
+	/*u_CctDispatchBuffer[4] = 0;
+	u_CctDispatchBuffer[5] = 0;
+	u_CctDispatchBuffer[6] = 0;
+	u_CctDispatchBuffer[7] = 0;*/
+}
