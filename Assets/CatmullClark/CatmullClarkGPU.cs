@@ -1306,19 +1306,12 @@ public static class CatmullClarkGPU
 	 * the subdivision surface won't produce exactly the same result for these polygons.
 	 * Currently all submeshes within the mesh are merged into a single halfedge mesh for
 	 * simplicity, which means having a different material per submesh is not supported.
+	 * 
+	 * UNFINISHED : doesn't support vertex welding, crashes unity
 	 */
-	public static cc_MeshGPU ccm_LoadFromUnityGPU(Mesh unityMesh, ref int[] unityVertexBufferToCCMWeldedBuffer, bool weldVertices, Vector3[] precomputedVertices = null, List<int[]> precomputedIndices = null, int precomputedEdgeCount = -1)
+	public static cc_MeshGPU ccm_LoadFromUnityGPU(Mesh unityMesh, ref int[] unityVertexBufferToCCMWeldedBuffer, bool weldVertices)
 	{
-		// Load Unity Mesh Data
-		/*Mesh.MeshData meshData = Mesh.AcquireReadOnlyMeshData(unityMesh)[0];
-		NativeArray<Vector3> vertices2 = new NativeArray<Vector3>(meshData.vertexCount, Allocator.Temp);
-		meshData.GetVertices(vertices2);*/
-
-		Vector3[] vertices;
-		if (precomputedVertices != null)
-			vertices = precomputedVertices; // TEMP TEST
-		else
-			vertices = unityMesh.vertices;
+		Vector3[] vertices = unityMesh.vertices;
 		int vertexCount = vertices.Length;
 		Vector2[] texcoords0 = unityMesh.uv;
 		int uvCount = texcoords0.Length;
@@ -1336,27 +1329,20 @@ public static class CatmullClarkGPU
 
 			// TEMP TEST
 			submeshTopologies.Add(topology);
-			if (precomputedIndices == null)
-			{
-				submeshIndices.Add(unityMesh.GetIndices(submeshID));
-				submeshIndicesUnwelded.Add(unityMesh.GetIndices(submeshID));
-				halfedgeCount += submeshIndices[submeshIndices.Count - 1].Length;
-			}
-			else
-			{
-				halfedgeCount += precomputedIndices[submeshID].Length;
-			}
+			submeshIndices.Add(unityMesh.GetIndices(submeshID));
+			submeshIndicesUnwelded.Add(unityMesh.GetIndices(submeshID));
+			halfedgeCount += submeshIndices[submeshIndices.Count - 1].Length;
 		}
+
+		// Init default vertex welding indirection buffer // TODO : add vertex welding on GPU
+		unityVertexBufferToCCMWeldedBuffer = new int[vertexCount];
+		for (int i = 0; i < vertexCount; i++)
+			unityVertexBufferToCCMWeldedBuffer[i] = i;
 
 		// Initialize Catmull Clark Mesh structure, load vertices and texcoords
 		cc_MeshGPU meshGPU = ccm_Create(vertexCount, uvCount, halfedgeCount, 1, 1);
 		meshGPU.vertexPoints.SetData(vertices);
 		meshGPU.uvs.SetData(texcoords0);
-
-		// TEMP TEST
-		LoadFaceMappingsSimple(meshGPU, submeshTopologies, precomputedIndices != null ? precomputedIndices : submeshIndices); // TODO : handle welded vertices with different UVs
-		ComputeTwins(meshGPU);
-		LoadEdgeMappings(meshGPU, precomputedEdgeCount);
 
 		bool crashed = false;
 		LoadVertexHalfedges(meshGPU, out crashed);

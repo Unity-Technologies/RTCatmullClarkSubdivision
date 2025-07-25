@@ -2033,124 +2033,6 @@ Transform:
   - {fileID: 135161498}
   m_Father: {fileID: 572418702}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
---- !u!21 &689961310
-Material:
-  serializedVersion: 8
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_Name: Custom/URPLitCatmullClarkWireframeControl
-  m_Shader: {fileID: 4800000, guid: 0f0edf12d97342b4fa7fa56eae450af0, type: 3}
-  m_Parent: {fileID: 0}
-  m_ModifiedSerializedProperties: 0
-  m_ValidKeywords: []
-  m_InvalidKeywords: []
-  m_LightmapFlags: 4
-  m_EnableInstancingVariants: 0
-  m_DoubleSidedGI: 0
-  m_CustomRenderQueue: -1
-  stringTagMap:
-    RenderType: Opaque
-  disabledShaderPasses: []
-  m_LockedProperties: 
-  m_SavedProperties:
-    serializedVersion: 3
-    m_TexEnvs:
-    - _BaseMap:
-        m_Texture: {fileID: 0}
-        m_Scale: {x: 1, y: 1}
-        m_Offset: {x: 0, y: 0}
-    - _BumpMap:
-        m_Texture: {fileID: 0}
-        m_Scale: {x: 1, y: 1}
-        m_Offset: {x: 0, y: 0}
-    - _DetailAlbedoMap:
-        m_Texture: {fileID: 0}
-        m_Scale: {x: 1, y: 1}
-        m_Offset: {x: 0, y: 0}
-    - _DetailMask:
-        m_Texture: {fileID: 0}
-        m_Scale: {x: 1, y: 1}
-        m_Offset: {x: 0, y: 0}
-    - _DetailNormalMap:
-        m_Texture: {fileID: 0}
-        m_Scale: {x: 1, y: 1}
-        m_Offset: {x: 0, y: 0}
-    - _EmissionMap:
-        m_Texture: {fileID: 0}
-        m_Scale: {x: 1, y: 1}
-        m_Offset: {x: 0, y: 0}
-    - _MainTex:
-        m_Texture: {fileID: 0}
-        m_Scale: {x: 1, y: 1}
-        m_Offset: {x: 0, y: 0}
-    - _MetallicGlossMap:
-        m_Texture: {fileID: 0}
-        m_Scale: {x: 1, y: 1}
-        m_Offset: {x: 0, y: 0}
-    - _OcclusionMap:
-        m_Texture: {fileID: 0}
-        m_Scale: {x: 1, y: 1}
-        m_Offset: {x: 0, y: 0}
-    - _ParallaxMap:
-        m_Texture: {fileID: 0}
-        m_Scale: {x: 1, y: 1}
-        m_Offset: {x: 0, y: 0}
-    - _SpecGlossMap:
-        m_Texture: {fileID: 0}
-        m_Scale: {x: 1, y: 1}
-        m_Offset: {x: 0, y: 0}
-    - unity_Lightmaps:
-        m_Texture: {fileID: 0}
-        m_Scale: {x: 1, y: 1}
-        m_Offset: {x: 0, y: 0}
-    - unity_LightmapsInd:
-        m_Texture: {fileID: 0}
-        m_Scale: {x: 1, y: 1}
-        m_Offset: {x: 0, y: 0}
-    - unity_ShadowMasks:
-        m_Texture: {fileID: 0}
-        m_Scale: {x: 1, y: 1}
-        m_Offset: {x: 0, y: 0}
-    m_Ints: []
-    m_Floats:
-    - _AlphaClip: 0
-    - _Blend: 0
-    - _BlendModePreserveSpecular: 1
-    - _BumpScale: 1
-    - _ClearCoatMask: 0
-    - _ClearCoatSmoothness: 0
-    - _Cull: 2
-    - _Cutoff: 0.5
-    - _DetailAlbedoMapScale: 1
-    - _DetailNormalMapScale: 1
-    - _DstBlend: 0
-    - _DstBlendAlpha: 0
-    - _EnvironmentReflections: 1
-    - _GlossMapScale: 0
-    - _Glossiness: 0
-    - _GlossyReflections: 0
-    - _Metallic: 0
-    - _OcclusionStrength: 1
-    - _Parallax: 0.005
-    - _QueueOffset: 0
-    - _ReceiveShadows: 1
-    - _Smoothness: 0.5
-    - _SmoothnessTextureChannel: 0
-    - _SpecularHighlights: 1
-    - _SrcBlend: 1
-    - _SrcBlendAlpha: 1
-    - _Surface: 0
-    - _WorkflowMode: 1
-    - _ZWrite: 1
-    m_Colors:
-    - _BaseColor: {r: 1, g: 1, b: 1, a: 1}
-    - _Color: {r: 1, g: 1, b: 1, a: 1}
-    - _EmissionColor: {r: 0, g: 0, b: 0, a: 1}
-    - _SpecColor: {r: 0.19999996, g: 0.19999996, b: 0.19999996, a: 1}
-  m_BuildTextureStacks: []
-  m_AllowLocking: 1
 --- !u!1 &700774443
 GameObject:
   m_ObjectHideFlags: 0
@@ -2645,7 +2527,7 @@ GameObject:
   m_Component:
   - component: {fileID: 946351276}
   - component: {fileID: 946351278}
-  - component: {fileID: 946351277}
+  - component: {fileID: 946351279}
   m_Layer: 0
   m_Name: Catmull_Clark_Trex_LOW
   m_TagString: Untagged
@@ -2668,58 +2550,6 @@ Transform:
   m_Children: []
   m_Father: {fileID: 1144752783}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
---- !u!114 &946351277
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 946351275}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 8eb563a2b65f3234c8ae4435477e1fd2, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: 
-  resetButton: 0
-  pauseAdaptiveTessellation: 0
-  renderMode: 0
-  maxSubdivisionDepth: 5
-  adaptiveTargetTrianglePixelLength: 14
-  uniformAutoLOD: 0
-  uniformAutoLODBias: 0.41
-  uniformAutoLODDepth: 5
-  uniformManualDepth: 6
-  debugMode: 0
-  gameCamera: {fileID: 2026277247}
-  catmullClarkRenderMaterial: {fileID: 2100000, guid: 031bef604ca740247a1000da24ba0b0a,
-    type: 2}
-  catmullClarkControlMeshMaterial: {fileID: 689961310}
-  usedCatmullClarkMaterial: {fileID: 2100000, guid: 031bef604ca740247a1000da24ba0b0a,
-    type: 2}
-  maxPossibleDepth: 5
-  forceConstantUpdatesInEditMode: 1
-  displacementEnabled: 1
-  displacement: {fileID: 2800000, guid: 9dc22aa0b70b30642aaf44dfc07a3369, type: 3}
-  displacementBase: 0.25
-  displacementOffset: 0
-  displacementAmplitude: 5.75
-  enableDebugWireframe: 0
-  whiteWireframe: 0
-  useVertexWelding: 0
-  loadFromUnityGPU: 0
-  bakeCCMFileButton: 0
-  loadFromCCMFile: 
-  disableSkinnedUpdate: 0
-  byteSize: 826156276
-  vramUsage: 787 MiB
-  currentTriangleCount: 32180
-  targetCamera: {fileID: 0}
-  setRenderMode: 0
-  setMaterial: {fileID: 2100000, guid: 031bef604ca740247a1000da24ba0b0a, type: 2}
-  tempTest1: 0
-  tempTest2: 0
-  tempTest3: 0
-  tempTest4: 0
 --- !u!137 &946351278
 SkinnedMeshRenderer:
   m_ObjectHideFlags: 0
@@ -2882,6 +2712,51 @@ SkinnedMeshRenderer:
     m_Center: {x: 0.07541376, y: -0.45729768, z: -0.4337995}
     m_Extent: {x: 1.2467227, y: 3.2508073, z: 1.5739589}
   m_DirtyAABB: 0
+--- !u!114 &946351279
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 946351275}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 8eb563a2b65f3234c8ae4435477e1fd2, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  resetButton: 0
+  pauseAdaptiveTessellation: 0
+  renderMode: 0
+  maxSubdivisionDepth: 2
+  adaptiveTargetTrianglePixelLength: 8
+  uniformAutoLOD: 0
+  uniformAutoLODBias: 1
+  uniformAutoLODDepth: 4
+  uniformManualDepth: 4
+  debugMode: 0
+  gameCamera: {fileID: 2026277247}
+  catmullClarkRenderMaterial: {fileID: 2100000, guid: 031bef604ca740247a1000da24ba0b0a,
+    type: 2}
+  catmullClarkControlMeshMaterial: {fileID: 0}
+  usedCatmullClarkMaterial: {fileID: 2100000, guid: 031bef604ca740247a1000da24ba0b0a,
+    type: 2}
+  maxPossibleDepth: 5
+  forceConstantUpdatesInEditMode: 0
+  displacementEnabled: 1
+  displacement: {fileID: 2800000, guid: 9dc22aa0b70b30642aaf44dfc07a3369, type: 3}
+  displacementBase: 0.25
+  displacementOffset: 0
+  displacementAmplitude: 5.75
+  useVertexWelding: 0
+  bakeCCMFileButton: 0
+  loadFromCCMFile: 
+  disableSkinnedUpdate: 0
+  byteSize: 14966932
+  vramUsage: 14 MiB
+  currentTriangleCount: 74534
+  targetCamera: {fileID: 0}
+  setRenderMode: 0
+  setMaterial: {fileID: 2100000, guid: 031bef604ca740247a1000da24ba0b0a, type: 2}
 --- !u!1 &970896555
 GameObject:
   m_ObjectHideFlags: 0

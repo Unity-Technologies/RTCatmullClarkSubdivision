@@ -40,10 +40,7 @@ public class CatmullClarkMeshRendererEditor : Editor
 	private SerializedProperty targetCamera;
 	private SerializedProperty gameCamera;
 	private SerializedProperty forceConstantUpdatesInEditMode;
-	private SerializedProperty enableDebugWireframe;
-	private SerializedProperty whiteWireframe;
 	private SerializedProperty useVertexWelding;
-	private SerializedProperty loadFromUnityGPU;
 	private SerializedProperty bakeCCMFileButton;
 	private SerializedProperty loadFromCCMFile;
 
@@ -74,10 +71,7 @@ public class CatmullClarkMeshRendererEditor : Editor
 		targetCamera = serializedObject.FindProperty("targetCamera");
 		gameCamera = serializedObject.FindProperty("gameCamera");
 		forceConstantUpdatesInEditMode = serializedObject.FindProperty("forceConstantUpdatesInEditMode");
-		enableDebugWireframe = serializedObject.FindProperty("enableDebugWireframe");
-		whiteWireframe = serializedObject.FindProperty("whiteWireframe");
 		useVertexWelding = serializedObject.FindProperty("useVertexWelding");
-		loadFromUnityGPU = serializedObject.FindProperty("loadFromUnityGPU");
 		bakeCCMFileButton = serializedObject.FindProperty("bakeCCMFileButton");
 		loadFromCCMFile = serializedObject.FindProperty("loadFromCCMFile");
 	}
@@ -189,11 +183,8 @@ public class CatmullClarkMeshRendererEditor : Editor
 				for (int i = 0; i < ccmRenderers.Length; i++)
 				{
 					if (ccmRenderers[i].catmullClarkControlMeshMaterial == null)
-					{
-						//ccmRenderers[i].catmullClarkControlMeshMaterial = new Material(Shader.Find("Shader Graphs/CatmullClarkControlMeshDebug"));
-						//ccmRenderers[i].catmullClarkControlMeshMaterial = new Material(Shader.Find("Custom/URPLitCatmullClarkWireframeControl")); // CUSTOM DEMO
-					}
-					//ccmRenderers[i].usedCatmullClarkMaterial = ccmRenderers[i].catmullClarkControlMeshMaterial;
+						ccmRenderers[i].catmullClarkControlMeshMaterial = new Material(Shader.Find("Shader Graphs/CatmullClarkControlMeshDebug"));
+					ccmRenderers[i].usedCatmullClarkMaterial = ccmRenderers[i].catmullClarkControlMeshMaterial;
 				}
 
 				EditorGUILayout.PropertyField(debugMode, new GUIContent("Control Mesh Debug Mode"));
@@ -244,37 +235,12 @@ public class CatmullClarkMeshRendererEditor : Editor
 		}
 
 
-		// Debug Parameters // CUSTOM DEMO
+		// Debug Parameters
 		EditorGUILayout.Space();
 		EditorGUILayout.LabelField("Debug Parameters", EditorStyles.boldLabel);
-		EditorGUILayout.PropertyField(enableDebugWireframe, new GUIContent("Enable Debug Wireframe"));
-		EditorGUILayout.PropertyField(whiteWireframe, new GUIContent("White Wireframe"));
 		EditorGUILayout.PropertyField(useVertexWelding, new GUIContent("Weld vertices at loading"));
-		EditorGUILayout.PropertyField(loadFromUnityGPU, new GUIContent("Load from Unity Mesh on GPU"));
 		EditorGUILayout.PropertyField(bakeCCMFileButton, new GUIContent("Bake CCM File"));
 		EditorGUILayout.PropertyField(loadFromCCMFile, new GUIContent("Load from CCM File"));
-
-		for (int i = 0; i < ccmRenderers.Length; i++)
-		{
-			ccmRenderers[i].usedCatmullClarkMaterial = ccmRenderers[i].catmullClarkRenderMaterial;
-
-			ccmRenderers[i].usedCatmullClarkMaterial.SetFloat("u_WhiteWireframe", ccmRenderers[i].whiteWireframe == true ? 1.0f : 0.0f);
-
-			if (ccmRenderers[i].enableDebugWireframe == true)
-				ccmRenderers[i].usedCatmullClarkMaterial.EnableKeyword("CCM_WIREFRAME");
-			else
-				ccmRenderers[i].usedCatmullClarkMaterial.DisableKeyword("CCM_WIREFRAME");
-
-			if (ccmRenderers[i].renderMode == CatmullClarkMeshRenderer.RenderMode.ControlMesh == true)
-				ccmRenderers[i].usedCatmullClarkMaterial.EnableKeyword("CCM_CONTROL_MODE");
-			else
-				ccmRenderers[i].usedCatmullClarkMaterial.DisableKeyword("CCM_CONTROL_MODE");
-
-			if (ccmRenderers[i].renderMode == CatmullClarkMeshRenderer.RenderMode.UniformTessellation == true)
-				ccmRenderers[i].usedCatmullClarkMaterial.EnableKeyword("CCM_UNIFORM_MODE");
-			else
-				ccmRenderers[i].usedCatmullClarkMaterial.DisableKeyword("CCM_UNIFORM_MODE");
-		}
 
 		serializedObject.ApplyModifiedProperties();
 	}

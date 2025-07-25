@@ -56,11 +56,8 @@ public class CatmullClarkMeshRenderer : MonoBehaviour
 	public float displacementOffset;
 	public float displacementAmplitude;
 
-	// Debug parameters // CUSTOM DEMO
-	public bool enableDebugWireframe;
-	public bool whiteWireframe;
-	public bool useVertexWelding = true;
-	public bool loadFromUnityGPU = true;
+	// Debug parameters
+	public bool useVertexWelding = false;
 	public bool bakeCCMFileButton = false;
 	public string loadFromCCMFile = "";
 	public bool disableSkinnedUpdate = false;
@@ -107,14 +104,6 @@ public class CatmullClarkMeshRenderer : MonoBehaviour
 	private int lastRenderedFrame = -1;
 	private int initFromSkinnedWaitFrames = 0;
 
-	// TEMP PERF TEST
-	public bool tempTest1 = false;
-	public bool tempTest2 = false;
-	public bool tempTest3 = false;
-	public bool tempTest4 = false;
-	private Vector3[] precomputedVertices;
-	private List<int[]> precomputedIndices;
-
 
 
 
@@ -136,22 +125,6 @@ public class CatmullClarkMeshRenderer : MonoBehaviour
 		cctUpdate = ((ComputeShader)Resources.Load("cct_Update"));
 
 		ChooseSceneOrGameCamera();
-
-		// TEMP PERF TESTMesh sourceMesh;
-		Mesh sourceMesh = null;
-		if (meshFilter != null)
-			sourceMesh = meshFilter.sharedMesh;
-		else if (skinnedMeshRenderer != null)
-			sourceMesh = skinnedMeshRenderer.sharedMesh;
-		precomputedVertices = sourceMesh.vertices;
-		precomputedIndices = new List<int[]>();
-		for (int submeshID = 0; submeshID < sourceMesh.subMeshCount; submeshID++)
-		{
-			MeshTopology topology = sourceMesh.GetTopology(submeshID);
-			if (topology != MeshTopology.Triangles && topology != MeshTopology.Quads)
-				continue;
-			precomputedIndices.Add(sourceMesh.GetIndices(submeshID));
-		}
 
 		InitEverything();
 		CatmullClarkTessellationUpdate();
@@ -230,36 +203,6 @@ public class CatmullClarkMeshRenderer : MonoBehaviour
 			UpdateVertexPositionsFromSkinnedMeshRenderer();
 		}
 
-		// TEMP PERF TESTS
-		Mesh sourceMesh;
-		if (meshFilter != null)
-			sourceMesh = meshFilter.sharedMesh;
-		else if (skinnedMeshRenderer != null)
-			sourceMesh = skinnedMeshRenderer.sharedMesh;
-		else
-			return;
-		if (tempTest1 == true)
-		{
-			CatmullClark.cc_Mesh cageCPU;
-			cageCPU = CatmullClark.ccm_LoadFromUnity(sourceMesh, ref unityVertexBufferToCCMWeldedBuffer, useVertexWelding, precomputedVertices, precomputedIndices);
-			CatmullClarkGPU.ccm_Release(cageGPU);
-			cageGPU = CatmullClarkGPU.ccm_CreateFromCPU(cageCPU);
-			CatmullClarkGPU.ccm_SetDataToMaterialPropertyBlock(cageGPU, materialParameters);
-			subdivisionGPU.cage = cageGPU;
-		}
-		else if (tempTest2 == true)
-		{
-			int precomputedEdgeCount = cageGPU.edgeCount;
-			CatmullClarkGPU.ccm_Release(cageGPU);
-			cageGPU = CatmullClarkGPU.ccm_LoadFromUnityGPU(sourceMesh, ref unityVertexBufferToCCMWeldedBuffer, useVertexWelding, precomputedVertices, precomputedIndices, precomputedEdgeCount);
-			CatmullClarkGPU.ccm_SetDataToMaterialPropertyBlock(cageGPU, materialParameters);
-			subdivisionGPU.cage = cageGPU;
-		}
-		else if (tempTest3 == true)
-		{
-			CatmullClarkGPU.ccs_Refine_Gather(subdivisionGPU);
-		}
-
 		// Editor : workaround for a correct skinned vertex buffer not being available immediatly following domain reload or application quit,
 		// do an init from skinned vertices + CCS subdivision update a couple frames after InitEverything()
 		if (skinnedMeshRenderer != null && initFromSkinnedWaitFrames > 0)
@@ -270,7 +213,7 @@ public class CatmullClarkMeshRenderer : MonoBehaviour
 		}
 
 		// Submit rendering instructions
-		if (isRenderingActive == true && tempTest4 == false)
+		if (isRenderingActive == true)
 		{
 			ScheduleDrawInstructions();
 		}
@@ -338,41 +281,18 @@ public class CatmullClarkMeshRenderer : MonoBehaviour
 			if (cageGPU != null)
 				CatmullClarkGPU.ccm_Release(cageGPU);
 
-			if (loadFromUnityGPU == false)
-			{
-				CatmullClark.cc_Mesh cageCPU;
-				if (loadFromCCMFile != "")
-					cageCPU = CatmullClark.ccm_Load(Application.dataPath + loadFromCCMFile);
-				else
-					cageCPU = CatmullClark.ccm_LoadFromUnity(sourceMesh, ref unityVertexBufferToCCMWeldedBuffer, useVertexWelding);
-				if (cageCPU == null)
-				{
-					ReleaseEverything();
-					return;
-				}
-				cageGPU = CatmullClarkGPU.ccm_CreateFromCPU(cageCPU);
-			}
+			CatmullClark.cc_Mesh cageCPU;
+			if (loadFromCCMFile != "")
+				cageCPU = CatmullClark.ccm_Load(Application.dataPath + loadFromCCMFile);
 			else
+				cageCPU = CatmullClark.ccm_LoadFromUnity(sourceMesh, ref unityVertexBufferToCCMWeldedBuffer, useVertexWelding);
+			if (cageCPU == null)
 			{
-				//cageGPU = CatmullClarkGPU.ccm_LoadFromUnityGPU(sourceMesh, ref unityVertexBufferToCCMWeldedBuffer, useVertexWelding); // TODO : vertex welding for UV discontinuities
-				cageGPU = CatmullClarkGPU.ccm_LoadFromUnityGPU(sourceMesh, ref unityVertexBufferToCCMWeldedBuffer, useVertexWelding);
+				ReleaseEverything();
+				return;
 			}
+			cageGPU = CatmullClarkGPU.ccm_CreateFromCPU(cageCPU);
 		}
-
-		//CatmullClark.cc_Crease[] creases0 = new CatmullClark.cc_Crease[cageGPU.edgeCount];
-		//cageGPU.creases.GetData(creases0);
-		//sw.Stop();
-		//Debug.Log("CCM Load " + (loadFromUnityGPU == true ? "GPU" : "") + " : " + sw.ElapsedMilliseconds + "ms");
-
-		// GPU LOAD PARITY TESTING
-		/*{
-			CatmullClark.cc_Mesh cage = CatmullClark.ccm_LoadFromUnity(sourceMesh, ref unityVertexBufferToCCMWeldedBuffer, useVertexWelding);
-			CatmullClarkGPU.cc_MeshGPU oldCageGPU = CatmullClarkGPU.ccm_CreateFromCPU(cage);
-			CatmullClarkGPU.cc_MeshGPU newCageGPU = CatmullClarkGPU.ccm_LoadFromUnityGPU(sourceMesh, ref unityVertexBufferToCCMWeldedBuffer, useVertexWelding);
-			CatmullClarkGPU.AssertEverythingEqual(oldCageGPU, newCageGPU);
-			CatmullClarkGPU.ccm_Release(oldCageGPU);
-			CatmullClarkGPU.ccm_Release(newCageGPU);
-		}*/
 
 		// Create Catmull Clark Subdivision
 		if (subdivisionGPU == null || initCCS == true)
@@ -658,8 +578,6 @@ public class CatmullClarkMeshRenderer : MonoBehaviour
 		}
 		materialParameters.SetMatrix("u_LocalToWorldMatrix", localToWorld);
 		materialParameters.SetMatrix("u_WorldToLocalMatrix", worldToLocal);
-		materialParameters.SetVector("u_ScreenResolution", new Vector2(targetCamera.pixelWidth, targetCamera.pixelHeight)); // CUSTOM DEMO
-		materialParameters.SetFloat("_EnableWireframe", 1.0f); // CUSTOM DEMO
 
 		// Update render parameters
 		renderParameters.worldBounds = rendererToUse.bounds;
@@ -687,19 +605,11 @@ public class CatmullClarkMeshRenderer : MonoBehaviour
 			materialParameters.SetInt("u_UniformModeDepth", depthToUse - 1);
 			Graphics.RenderPrimitives(renderParameters, MeshTopology.Triangles, (int)vertexCount);
 		}
-		else if (renderMode == RenderMode.UniformTessellation)
-		{
-			int depthToUse = uniformAutoLOD == true ? uniformAutoLODDepth : uniformManualDepth;
-			int triCountAtDepth = CatmullClarkGPU.ccm_HalfedgeCount(cageGPU) << (depthToUse - 1);
-			int vertexCount = triCountAtDepth * 3;
-			materialParameters.SetInt("u_UniformModeDepth", depthToUse - 1);
-			Graphics.RenderPrimitives(renderParameters, MeshTopology.Triangles, (int)vertexCount);
-		}
 		else // Control Mesh Display
 		{
-			materialParameters.SetInt("u_ControlMeshDebugMode", (int)debugMode);
 			int halfedgeCountCCM = CatmullClarkGPU.ccm_HalfedgeCount(cageGPU);
 			int vertexCount = halfedgeCountCCM * 3;
+			materialParameters.SetInt("u_ControlMeshDebugMode", (int)debugMode);
 			Graphics.RenderPrimitives(renderParameters, MeshTopology.Triangles, (int)vertexCount);
 		}
 	}

@@ -1,4 +1,5 @@
-/* library for building binary trees in parallel by Jonathan Dupuy
+/* public domain library for building binary trees in parallel
+by Jonathan Dupuy
 */
 
 #ifdef CCM_BF_FLAG_WRITE

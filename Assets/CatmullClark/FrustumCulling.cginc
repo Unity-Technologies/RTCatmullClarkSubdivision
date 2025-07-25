@@ -1,4 +1,5 @@
-/* frustum culling GLSL code (Created by Jonathan Dupuy 2014.11.13)
+/* FrustumCulling.glsl - public domain frustum culling GLSL code
+    (Created by Jonathan Dupuy 2014.11.13)
 
 */
 //////////////////////////////////////////////////////////////////////////////

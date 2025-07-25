@@ -13,7 +13,6 @@ int u_InitializedAdaptive;
 float4x4 u_LocalToWorldMatrix;
 float4x4 u_WorldToLocalMatrix;
 int u_UniformModeDepth;
-float2 u_ScreenResolution;
 float4x4 u_ObjectToClipMatrix;
 int u_ControlMeshDebugMode;
 
@@ -273,7 +272,6 @@ void CatmullClarkControlMeshVert_float(float vertexID, out float3 position, out 
 			);
 			debugColor = float3(faceUVs[intVertexID], 0.0);
 		}
-
 	}
 }
 

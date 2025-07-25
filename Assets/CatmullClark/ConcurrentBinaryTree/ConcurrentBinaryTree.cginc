@@ -1,4 +1,5 @@
-/* library for building binary trees in parallel by Jonathan Dupuy
+/* public domain library for building binary trees in parallel
+by Jonathan Dupuy
 */
 
 #ifdef CBT_FLAG_WRITE

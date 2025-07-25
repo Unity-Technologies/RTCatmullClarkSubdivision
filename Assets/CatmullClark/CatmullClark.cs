@@ -3635,14 +3635,10 @@ public static class CatmullClark
 	 * Currently all submeshes within the mesh are merged into a single halfedge mesh for
 	 * simplicity, which means having a different material per submesh is not supported.
 	 */
-	public static cc_Mesh ccm_LoadFromUnity(Mesh unityMesh, ref int[] unityVertexBufferToCCMWeldedBuffer, bool weldVertices = true, Vector3[] precomputedVertices = null, List<int[]> precomputedIndices = null)
+	public static cc_Mesh ccm_LoadFromUnity(Mesh unityMesh, ref int[] unityVertexBufferToCCMWeldedBuffer, bool weldVertices = true)
 	{
 		// Load Unity Mesh Data
-		Vector3[] vertices;
-		if (precomputedVertices != null)
-			vertices = precomputedVertices; // TEMP TEST
-		else
-			vertices = unityMesh.vertices;
+		Vector3[] vertices = vertices = unityMesh.vertices;
 		int vertexCount = vertices.Length;
 		Vector2[] texcoords0 = unityMesh.uv;
 		int uvCount = texcoords0.Length;
@@ -3660,18 +3656,9 @@ public static class CatmullClark
 
 			// TEMP TEST
 			submeshTopologies.Add(topology);
-			if (precomputedIndices == null)
-			{
-				submeshIndices.Add(unityMesh.GetIndices(submeshID));
-				submeshIndicesUnwelded.Add(unityMesh.GetIndices(submeshID));
-				halfedgeCount += submeshIndices[submeshIndices.Count - 1].Length;
-			}
-			else
-			{
-				submeshIndices.Add(precomputedIndices[submeshID]);  // TEMP TEST
-				submeshIndicesUnwelded.Add(precomputedIndices[submeshID]);  // TEMP TEST
-				halfedgeCount += precomputedIndices[submeshID].Length;
-			}
+			submeshIndices.Add(unityMesh.GetIndices(submeshID));
+			submeshIndicesUnwelded.Add(unityMesh.GetIndices(submeshID));
+			halfedgeCount += submeshIndices[submeshIndices.Count - 1].Length;
 		}
 
 		// Remove duplicate vertices and create remapping array to keep separate UVs
